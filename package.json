@@ -20,7 +20,7 @@
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.6.0",
     "leaflet": "^1.9.4",
-    "next": "14.2.5",
+    "next": "^14.2.35",
     "next-auth": "5.0.0-beta.25",
     "oci-common": "^2.88.0",
     "oci-generativeaiinference": "^2.88.0",
