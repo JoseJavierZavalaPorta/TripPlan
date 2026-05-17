@@ -1,0 +1,41 @@
+{
+  "name": "tripplan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TripPlan — Collaborative travel planning with AI itinerary generation",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/leaflet": "^1.9.14",
+    "@types/node": "^20.11.0",
+    "@types/oracledb": "^6.10.3",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "bcryptjs": "^2.4.3",
+    "date-fns": "^3.6.0",
+    "leaflet": "^1.9.4",
+    "next": "14.2.5",
+    "next-auth": "5.0.0-beta.25",
+    "oci-common": "^2.88.0",
+    "oci-generativeaiinference": "^2.88.0",
+    "oracledb": "^6.4.0",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "swr": "^2.2.5",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5"
+  }
+}
