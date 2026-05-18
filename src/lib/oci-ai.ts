@@ -402,7 +402,8 @@ async function generateDayItems(
 
   // Attempt 2: minimal prompt with 2000 tokens (fallback if model still truncates)
   console.warn(`[oci-ai] Day ${dayNumber} attempt 1 failed — retrying with minimal prompt`);
-  const minimalMessage = `Output a JSON array of 8 itinerary items for ${dayDate} in ${trip.destination}. Include breakfast 07:00, transport 08:00, activity 08:30, activity 11:30, lunch 13:00, transport 14:30, activity 15:00, dinner 20:00. Each item: position,itemType,title,description,locationName,startTime,endTime,durationMin,estimatedCost,currency. Local currency. JSON only:`;
+  const city = cityAssignment?.city ?? trip.destination;
+  const minimalMessage = `Output a JSON array of 8 itinerary items for day ${dayNumber} (${dayDate}) in ${city}. itemType MUST be one of: meal, transport, activity, rest, accommodation, free_time. Include: meal 07:00, transport 08:00, activity 09:00, activity 11:30, meal 13:00, transport 14:30, activity 15:00, meal 20:00. Each item needs: position,itemType,title,description,locationName,startTime,endTime,durationMin,estimatedCost,currency. Use local currency. Output JSON array only, no other text:`;
   const rawText2 = await ociChat(minimalMessage, 2000);
   if (rawText2) {
     const items = tryParse(rawText2, 'attempt-2');

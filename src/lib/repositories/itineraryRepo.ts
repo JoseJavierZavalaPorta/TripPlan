@@ -151,6 +151,23 @@ export async function toggleDayLock(dayId: string, locked: boolean): Promise<voi
   );
 }
 
+const VALID_ITEM_TYPES = new Set(['activity','meal','transport','rest','accommodation','free_time']);
+const ITEM_TYPE_MAP: Record<string, string> = {
+  breakfast: 'meal', lunch: 'meal', dinner: 'meal', brunch: 'meal', snack: 'meal', food: 'meal', restaurant: 'meal',
+  walk: 'transport', walking: 'transport', flight: 'transport', train: 'transport', bus: 'transport',
+  taxi: 'transport', uber: 'transport', car: 'transport', boat: 'transport', transit: 'transport', drive: 'transport',
+  hotel: 'accommodation', hostel: 'accommodation', airbnb: 'accommodation', lodging: 'accommodation', sleep: 'accommodation',
+  break: 'rest', relax: 'rest', relaxation: 'rest', nap: 'rest',
+  free: 'free_time', leisure: 'free_time',
+};
+
+function normalizeItemType(raw: string | null | undefined): string {
+  if (!raw) return 'activity';
+  const lower = raw.toLowerCase().trim();
+  if (VALID_ITEM_TYPES.has(lower)) return lower;
+  return ITEM_TYPE_MAP[lower] ?? 'activity';
+}
+
 // Persist one generated day immediately after the AI produces it.
 // Safe to call concurrently for different days (each runs its own transaction).
 export async function saveGeneratedDay(tripId: string, day: GeneratedDay): Promise<void> {
@@ -209,7 +226,7 @@ export async function saveGeneratedDay(tripId: string, day: GeneratedDay): Promi
           dayId: dayIdBuf,
           tripId: hexToBuffer(tripId),
           position: item.position,
-          itemType: item.itemType,
+          itemType: normalizeItemType(item.itemType),
           title: item.title.substring(0, 300),
           description: item.description ?? null,
           locationName: item.locationName ?? null,
