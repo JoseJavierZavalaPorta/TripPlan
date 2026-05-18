@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import oracledb from 'oracledb';
 import path from 'path';
 import fs from 'fs';
+import net from 'net';
 
 export async function GET() {
   const info: Record<string, unknown> = {};
@@ -63,6 +64,26 @@ export async function GET() {
     info.errorCause = err.cause ? String(err.cause) : undefined;
     info.errorStack = err.stack?.split('\n').slice(0, 5).join('\n');
   }
+
+  // 4. Raw TCP connectivity test to Oracle host:port
+  const oracleHost = 'adb.sa-saopaulo-1.oraclecloud.com';
+  const oraclePort = 1522;
+  info.tcpTest = await new Promise((resolve) => {
+    const socket = net.createConnection(oraclePort, oracleHost);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(`TIMEOUT after 6s (port ${oraclePort} on ${oracleHost} unreachable from Railway)`);
+    }, 6000);
+    socket.on('connect', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(`CONNECTED to ${oracleHost}:${oraclePort} — TCP OK`);
+    });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      resolve(`TCP ERROR: ${err.message}`);
+    });
+  });
 
   return NextResponse.json(info, { status: 200 });
 }
