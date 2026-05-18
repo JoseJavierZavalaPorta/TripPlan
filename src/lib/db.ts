@@ -14,15 +14,26 @@ function getWalletConfig(): {
   walletLocation?: string;
   configDir?: string;
 } {
-  // Production (Railway): write ewallet.pem directly from env var — no zip/unzip
-  if (process.env.ORACLE_EWALLET_PEM_B64) {
+  // Production (Railway): write ewallet.p12 + ewallet.pem from env vars.
+  // oracledb thin mode walletLocation requires ewallet.p12 (PKCS#12) in the dir.
+  if (process.env.ORACLE_EWALLET_P12_B64 || process.env.ORACLE_EWALLET_PEM_B64) {
     const tmpDir = '/tmp/oracle-wallet';
-    const pemPath = path.join(tmpDir, 'ewallet.pem');
-    if (!fs.existsSync(pemPath)) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-      const pemBuf = Buffer.from(process.env.ORACLE_EWALLET_PEM_B64, 'base64');
-      fs.writeFileSync(pemPath, pemBuf);
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    if (process.env.ORACLE_EWALLET_P12_B64) {
+      const p12Path = path.join(tmpDir, 'ewallet.p12');
+      if (!fs.existsSync(p12Path)) {
+        fs.writeFileSync(p12Path, Buffer.from(process.env.ORACLE_EWALLET_P12_B64, 'base64'));
+      }
     }
+
+    if (process.env.ORACLE_EWALLET_PEM_B64) {
+      const pemPath = path.join(tmpDir, 'ewallet.pem');
+      if (!fs.existsSync(pemPath)) {
+        fs.writeFileSync(pemPath, Buffer.from(process.env.ORACLE_EWALLET_PEM_B64, 'base64'));
+      }
+    }
+
     return { walletLocation: tmpDir };
   }
 
