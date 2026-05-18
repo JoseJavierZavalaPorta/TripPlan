@@ -31,7 +31,8 @@ export async function POST(
 
     const form = await req.formData();
     const file = form.get('file');
-    if (!(file instanceof File)) {
+    // Node.js 18 doesn't expose File as a global — Blob is always available and File extends Blob
+    if (!(file instanceof Blob)) {
       return NextResponse.json({ error: 'Se requiere un archivo' }, { status: 400 });
     }
 

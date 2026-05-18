@@ -99,9 +99,15 @@ export async function POST(
 
   const stream = new ReadableStream({
     async start(controller) {
+      let closed = false;
       const send = (event: string, data: object) => {
-        const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(msg));
+        if (closed) return;
+        try {
+          const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(msg));
+        } catch {
+          closed = true;
+        }
       };
 
       try {
@@ -140,7 +146,8 @@ export async function POST(
         console.error('[SSE generate]', err);
         send('error', { message: err instanceof Error ? err.message : 'Error al generar itinerario' });
       } finally {
-        controller.close();
+        closed = true;
+        try { controller.close(); } catch { /* already closed by client disconnect */ }
       }
     },
   });
