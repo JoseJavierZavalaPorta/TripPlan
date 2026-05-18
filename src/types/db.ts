@@ -151,6 +151,12 @@ export interface DbTripMedia {
   CREATED_AT: Date;
 }
 
+export interface DbTripMediaFile {
+  MEDIA_ID: Buffer;
+  MIME_TYPE: string;
+  FILE_DATA: Buffer;
+}
+
 export interface DbTripInvitation {
   ID: Buffer;
   TRIP_ID: Buffer;

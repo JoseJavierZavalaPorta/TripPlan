@@ -28,6 +28,7 @@ CREATE TABLE trip_participants (
               CHECK (role IN ('leader','member')),
   status      VARCHAR2(20) DEFAULT 'pending'
               CHECK (status IN ('pending','accepted','declined')),
+  can_edit    NUMBER(1) DEFAULT 0 NOT NULL CHECK (can_edit IN (0,1)),
   joined_at   TIMESTAMP WITH TIME ZONE,
   created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_trip_participant UNIQUE (trip_id, user_id)
@@ -75,6 +76,10 @@ CREATE TABLE itinerary_days (
   trip_id    RAW(16) NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
   day_date   DATE NOT NULL,
   day_number NUMBER(3) NOT NULL,
+  locked     NUMBER(1) DEFAULT 0 NOT NULL CHECK (locked IN (0, 1)),
+  city       VARCHAR2(200),
+  country    VARCHAR2(200),
+  flag       VARCHAR2(10),
   notes      CLOB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_itinerary_day UNIQUE (trip_id, day_date)
@@ -188,6 +193,23 @@ CREATE TABLE trip_invitations (
               CHECK (status IN ('pending','accepted','declined','expired')),
   expires_at  TIMESTAMP WITH TIME ZONE NOT NULL,
   created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── TRIP BLACKLIST (activities to skip during regeneration) ──────────────────
+CREATE TABLE trip_blacklist (
+  id         RAW(16) DEFAULT SYS_GUID() PRIMARY KEY,
+  trip_id    RAW(16) NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  title      VARCHAR2(300) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_blacklist_trip ON trip_blacklist (trip_id);
+
+-- ── TRIP MEDIA FILES (uploaded photo BLOBs) ───────────────────────────────────
+CREATE TABLE trip_media_files (
+  media_id  RAW(16) PRIMARY KEY REFERENCES trip_media(id) ON DELETE CASCADE,
+  mime_type VARCHAR2(100) NOT NULL,
+  file_data BLOB NOT NULL
 );
 
 -- ── INDEXES ────────────────────────────────────────────────────────────────────

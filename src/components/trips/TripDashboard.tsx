@@ -1,7 +1,7 @@
 // src/components/trips/TripDashboard.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trip, TripParticipant, ItineraryDay, FlightStatus, TravelerProfile } from '@/types';
 import { format, parseISO, differenceInDays } from 'date-fns';
@@ -47,7 +47,14 @@ export function TripDashboard({
   hasProfile,
   myProfile,
 }: TripDashboardProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('itinerario');
+
+  useEffect(() => {
+    const es = new EventSource(`/api/trips/${trip.id}/events`);
+    es.addEventListener('update', () => router.refresh());
+    return () => es.close();
+  }, [trip.id, router]);
 
   // Determine what the current user can do
   const currentParticipant = participants.find(p => p.userId === currentUserId);
