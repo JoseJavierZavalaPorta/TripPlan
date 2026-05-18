@@ -11,32 +11,22 @@ import fs from 'fs';
 //                         Falls back to <cwd>/wallet/extracted.
 
 function getWalletConfig(): {
-  walletContent?: string;
   walletLocation?: string;
   configDir?: string;
 } {
-  // Prefer direct PEM content (Railway) — avoids any file extraction
+  // Production (Railway): write ewallet.pem directly from env var — no zip/unzip
   if (process.env.ORACLE_EWALLET_PEM_B64) {
-    const pem = Buffer.from(process.env.ORACLE_EWALLET_PEM_B64, 'base64').toString('utf8');
-    return { walletContent: pem };
-  }
-
-  // Legacy zip bootstrap (kept for backwards-compat, writes files to /tmp)
-  if (process.env.ORACLE_WALLET_BASE64) {
     const tmpDir = '/tmp/oracle-wallet';
-    if (!fs.existsSync(tmpDir)) {
+    const pemPath = path.join(tmpDir, 'ewallet.pem');
+    if (!fs.existsSync(pemPath)) {
       fs.mkdirSync(tmpDir, { recursive: true });
-      const zipBuffer = Buffer.from(process.env.ORACLE_WALLET_BASE64, 'base64');
-      const zipPath = '/tmp/wallet.zip';
-      fs.writeFileSync(zipPath, zipBuffer);
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { execSync } = require('child_process');
-      execSync(`unzip -o ${zipPath} -d ${tmpDir}`, { stdio: 'pipe' });
+      const pemBuf = Buffer.from(process.env.ORACLE_EWALLET_PEM_B64, 'base64');
+      fs.writeFileSync(pemPath, pemBuf);
     }
-    return { walletLocation: tmpDir, configDir: tmpDir };
+    return { walletLocation: tmpDir };
   }
 
-  // Local dev: use wallet folder on disk
+  // Local dev: use extracted wallet folder
   const walletDir =
     process.env.ORACLE_WALLET_DIR ||
     path.join(process.cwd(), 'wallet', 'extracted');
