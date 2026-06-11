@@ -9,8 +9,9 @@ import { es } from 'date-fns/locale';
 import Link from 'next/link';
 import { ParticipantList } from './ParticipantList';
 import { DayItinerary } from '../itinerary/DayItinerary';
+import { AlbumTab } from './AlbumTab';
 
-type Tab = 'itinerario' | 'participantes' | 'mapa';
+type Tab = 'itinerario' | 'participantes' | 'mapa' | 'fotos';
 
 interface TripDashboardProps {
   trip: Trip;
@@ -31,11 +32,11 @@ const STATUS_LABELS: Record<Trip['status'], string> = {
 };
 
 const STATUS_COLORS: Record<Trip['status'], string> = {
-  planning: 'text-amber-400 bg-amber-400/10 border-amber-400/20',
-  confirmed: 'text-sky-400 bg-sky-400/10 border-sky-400/20',
-  in_progress: 'text-green-400 bg-green-400/10 border-green-400/20',
-  completed: 'text-slate-400 bg-slate-400/10 border-slate-400/20',
-  cancelled: 'text-red-400 bg-red-400/10 border-red-400/20',
+  planning: 'text-amber-700 bg-amber-100 border-amber-200',
+  confirmed: 'text-sky-700 bg-sky-100 border-sky-200',
+  in_progress: 'text-green-700 bg-green-100 border-green-200',
+  completed: 'text-slate-600 bg-slate-100 border-slate-200',
+  cancelled: 'text-red-700 bg-red-100 border-red-200',
 };
 
 export function TripDashboard({
@@ -49,6 +50,21 @@ export function TripDashboard({
 }: TripDashboardProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('itinerario');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  async function handleDelete() {
+    if (!deleteConfirm) { setDeleteConfirm(true); return; }
+    setDeleting(true);
+    try {
+      await fetch(`/api/trips/${trip.id}`, { method: 'DELETE' });
+      router.push('/trips');
+      router.refresh();
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  }
 
   useEffect(() => {
     const es = new EventSource(`/api/trips/${trip.id}/events`);
@@ -67,9 +83,9 @@ export function TripDashboard({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Trip Header */}
-      <div className="bg-navy-800 rounded-2xl p-5 border border-slate-700/50">
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-card">
         <div className="flex items-start justify-between mb-3">
-          <h1 className="text-xl font-bold text-white leading-snug flex-1 min-w-0 pr-3">
+          <h1 className="text-xl font-bold text-slate-900 leading-snug flex-1 min-w-0 pr-3">
             {trip.title}
           </h1>
           <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_COLORS[trip.status]}`}>
@@ -77,7 +93,7 @@ export function TripDashboard({
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-slate-400 mb-4">
+        <div className="flex items-center gap-1.5 text-slate-500 mb-4">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -88,26 +104,60 @@ export function TripDashboard({
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-navy-900/50 rounded-xl p-3 text-center">
-            <div className="text-sky-400 font-bold text-lg">
+          <div className="bg-sky-50 rounded-xl p-3 text-center border border-sky-100">
+            <div className="text-sky-600 font-bold text-lg">
               {format(start, 'd MMM', { locale: es })}
             </div>
-            <div className="text-slate-500 text-xs mt-0.5">Inicio</div>
+            <div className="text-slate-400 text-xs mt-0.5">Inicio</div>
           </div>
-          <div className="bg-navy-900/50 rounded-xl p-3 text-center">
+          <div className="bg-adventure-500 rounded-xl p-3 text-center">
             <div className="text-white font-bold text-lg">{days}</div>
-            <div className="text-slate-500 text-xs mt-0.5">{days === 1 ? 'Día' : 'Días'}</div>
+            <div className="text-orange-100 text-xs mt-0.5">{days === 1 ? 'Día' : 'Días'}</div>
           </div>
-          <div className="bg-navy-900/50 rounded-xl p-3 text-center">
-            <div className="text-amber-400 font-bold text-lg">
+          <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+            <div className="text-amber-600 font-bold text-lg">
               {format(end, 'd MMM', { locale: es })}
             </div>
-            <div className="text-slate-500 text-xs mt-0.5">Fin</div>
+            <div className="text-slate-400 text-xs mt-0.5">Fin</div>
           </div>
         </div>
 
         {trip.description && (
-          <p className="text-slate-400 text-sm mt-4 leading-relaxed">{trip.description}</p>
+          <p className="text-slate-500 text-sm mt-4 leading-relaxed">{trip.description}</p>
+        )}
+
+        {isLeader && (
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+            {deleteConfirm ? (
+              <>
+                <span className="text-red-600 text-xs flex-1">¿Eliminar permanentemente?</span>
+                <button
+                  onClick={() => setDeleteConfirm(false)}
+                  className="text-slate-600 text-xs px-3 py-1.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="text-red-600 text-xs px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 cursor-pointer disabled:opacity-50 hover:bg-red-100 transition-colors"
+                >
+                  {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1.5 text-slate-400 hover:text-red-600 text-xs transition-colors cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Eliminar viaje
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -115,21 +165,21 @@ export function TripDashboard({
       {!hasProfile && (
         <Link
           href={`/trips/${trip.id}/profile`}
-          className="flex items-center gap-3 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-3 active:scale-95 transition-transform"
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 active:scale-95 transition-transform cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-lg bg-amber-400/20 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-amber-400 text-sm font-semibold">Completa tu perfil</div>
-            <div className="text-slate-400 text-xs">
+            <div className="text-amber-700 text-sm font-semibold">Completa tu perfil</div>
+            <div className="text-amber-600 text-xs">
               La IA necesita tus preferencias para personalizar el itinerario
             </div>
           </div>
-          <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </Link>
@@ -142,52 +192,55 @@ export function TripDashboard({
       <div className="grid grid-cols-2 gap-3">
         <Link
           href={`/trips/${trip.id}/profile`}
-          className="bg-navy-800 rounded-xl p-4 border border-slate-700/50 active:scale-95 transition-transform flex items-center gap-3"
+          className="bg-white rounded-xl p-4 border border-slate-200 active:scale-95 transition-all hover:border-sky-200 hover:shadow-card-hover shadow-card flex items-center gap-3 cursor-pointer"
         >
-          <div className="w-9 h-9 rounded-lg bg-sky-400/20 flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-9 h-9 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
           <div>
-            <div className="text-white text-sm font-semibold">Mi perfil</div>
-            <div className="text-slate-500 text-xs">Preferencias</div>
+            <div className="text-slate-900 text-sm font-semibold">Mi perfil</div>
+            <div className="text-slate-400 text-xs">Preferencias</div>
           </div>
         </Link>
 
         {isLeader && (
           <Link
             href={`/trips/${trip.id}/invite`}
-            className="bg-navy-800 rounded-xl p-4 border border-slate-700/50 active:scale-95 transition-transform flex items-center gap-3"
+            className="bg-white rounded-xl p-4 border border-slate-200 active:scale-95 transition-all hover:border-adventure-200 hover:shadow-card-hover shadow-card flex items-center gap-3 cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-lg bg-amber-400/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-adventure-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
             </div>
             <div>
-              <div className="text-white text-sm font-semibold">Invitar</div>
-              <div className="text-slate-500 text-xs">Añadir viajeros</div>
+              <div className="text-slate-900 text-sm font-semibold">Invitar</div>
+              <div className="text-slate-400 text-xs">Añadir viajeros</div>
             </div>
           </Link>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-navy-800 rounded-xl p-1">
-        {(['itinerario', 'participantes', 'mapa'] as Tab[]).map((tab) => (
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        {(['itinerario', 'participantes', 'fotos', 'mapa'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 h-9 rounded-lg text-sm font-semibold capitalize transition-colors ${
+            className={`flex-1 h-9 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               activeTab === tab
-                ? 'bg-sky-400 text-navy-900'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-adventure-500 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            {tab === 'itinerario' ? 'Itinerario' : tab === 'participantes' ? 'Grupo' : 'Mapa'}
+            {tab === 'itinerario' ? 'Itinerario'
+              : tab === 'participantes' ? 'Grupo'
+              : tab === 'fotos' ? 'Fotos'
+              : 'Mapa'}
           </button>
         ))}
       </div>
@@ -213,6 +266,10 @@ export function TripDashboard({
         />
       )}
 
+      {activeTab === 'fotos' && (
+        <AlbumTab tripId={trip.id} />
+      )}
+
       {activeTab === 'mapa' && (
         <MapTab tripId={trip.id} itinerary={itinerary} trip={trip} />
       )}
@@ -229,9 +286,9 @@ const FLIGHT_STATUS_LABELS: Record<FlightStatus, string> = {
 };
 
 const FLIGHT_STATUS_COLORS: Record<FlightStatus, string> = {
-  none:      'text-slate-400 bg-slate-400/10',
-  tentative: 'text-amber-400 bg-amber-400/10',
-  booked:    'text-teal-400 bg-teal-400/10',
+  none:      'text-slate-500 bg-slate-100',
+  tentative: 'text-amber-700 bg-amber-100',
+  booked:    'text-teal-700 bg-teal-100',
 };
 
 function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
@@ -269,19 +326,19 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
 
   if (!editing) {
     return (
-      <div className="bg-navy-800 rounded-2xl border border-slate-700/50 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vuelos y visión</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Vuelos y visión</span>
             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${FLIGHT_STATUS_COLORS[trip.flightStatus]}`}>
               {FLIGHT_STATUS_LABELS[trip.flightStatus]}
             </span>
           </div>
           {isLeader && (
-            <button onClick={() => setEditing(true)} className="text-sky-400 text-xs font-semibold">
+            <button onClick={() => setEditing(true)} className="text-sky-500 text-xs font-semibold hover:text-sky-600 cursor-pointer">
               Editar
             </button>
           )}
@@ -290,32 +347,32 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
         <div className="px-4 pb-4 space-y-2">
           {(trip.outboundFlight || trip.outboundDate) && (
             <div className="flex items-start gap-2">
-              <span className="text-slate-600 text-xs mt-0.5">↗</span>
-              <span className="text-slate-400 text-xs">
+              <span className="text-slate-400 text-xs mt-0.5">↗</span>
+              <span className="text-slate-600 text-xs">
                 {trip.outboundFlight || trip.outboundDate}
               </span>
             </div>
           )}
           {(trip.returnFlight || trip.returnDate) && (
             <div className="flex items-start gap-2">
-              <span className="text-slate-600 text-xs mt-0.5">↙</span>
-              <span className="text-slate-400 text-xs">
+              <span className="text-slate-400 text-xs mt-0.5">↙</span>
+              <span className="text-slate-600 text-xs">
                 {trip.returnFlight || trip.returnDate}
               </span>
             </div>
           )}
           {trip.tripNotes && (
-            <div className="mt-2 pt-2 border-t border-slate-700/50">
-              <p className="text-slate-400 text-xs leading-relaxed line-clamp-3">{trip.tripNotes}</p>
+            <div className="mt-2 pt-2 border-t border-slate-100">
+              <p className="text-slate-500 text-xs leading-relaxed line-clamp-3">{trip.tripNotes}</p>
             </div>
           )}
           {!hasAnyData && isLeader && (
-            <button onClick={() => setEditing(true)} className="text-slate-600 text-xs">
+            <button onClick={() => setEditing(true)} className="text-slate-400 hover:text-sky-500 text-xs transition-colors cursor-pointer">
               Añade vuelos y la visión del viaje para que el agente planifique mejor →
             </button>
           )}
           {!hasAnyData && !isLeader && (
-            <p className="text-slate-600 text-xs">Sin información de vuelos aún.</p>
+            <p className="text-slate-400 text-xs">Sin información de vuelos aún.</p>
           )}
         </div>
       </div>
@@ -323,22 +380,22 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
   }
 
   return (
-    <div className="bg-navy-800 rounded-2xl border border-sky-400/30 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
-        <span className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Editar vuelos y visión</span>
+    <div className="bg-white rounded-2xl border border-sky-200 shadow-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-sky-50">
+        <span className="text-xs font-semibold text-sky-700 uppercase tracking-wider">Editar vuelos y visión</span>
       </div>
 
       <div className="p-4 space-y-4">
         {/* Flight status */}
         <div className="space-y-2">
-          <label className="text-xs text-slate-500 block">Estado de vuelos</label>
+          <label className="text-xs font-semibold text-slate-600 block">Estado de vuelos</label>
           <div className="flex gap-2">
             {(['none', 'tentative', 'booked'] as FlightStatus[]).map((s) => (
               <button
                 key={s}
                 onClick={() => setFlightStatus(s)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  flightStatus === s ? 'bg-sky-400 text-navy-900' : 'bg-slate-700/50 text-slate-400'
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  flightStatus === s ? 'bg-adventure-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                 }`}
               >
                 {s === 'none' ? 'Sin vuelos' : s === 'tentative' ? 'Tentativo' : 'Reservado'}
@@ -351,17 +408,17 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
           <>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Fecha salida</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1.5">Fecha salida</label>
                 <input
                   type="date" value={outboundDate} onChange={(e) => setOutboundDate(e.target.value)}
-                  className="w-full bg-slate-700/50 text-white text-xs rounded-lg px-2 py-2 outline-none [color-scheme:dark]"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 transition-colors"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Fecha regreso</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1.5">Fecha regreso</label>
                 <input
                   type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)}
-                  className="w-full bg-slate-700/50 text-white text-xs rounded-lg px-2 py-2 outline-none [color-scheme:dark]"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 transition-colors"
                 />
               </div>
             </div>
@@ -369,19 +426,19 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
             {flightStatus === 'booked' && (
               <>
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">Vuelo de salida</label>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1.5">Vuelo de salida</label>
                   <input
                     type="text" value={outboundFlight} onChange={(e) => setOutboundFlight(e.target.value)}
                     placeholder="Ej: LA2031 · 10:30 Lima→Cusco" maxLength={200}
-                    className="w-full bg-slate-700/50 text-white text-xs rounded-lg px-3 py-2 outline-none placeholder-slate-600"
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 placeholder-slate-400 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">Vuelo de regreso</label>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1.5">Vuelo de regreso</label>
                   <input
                     type="text" value={returnFlight} onChange={(e) => setReturnFlight(e.target.value)}
                     placeholder="Ej: LA2030 · 12:00 Cusco→Lima" maxLength={200}
-                    className="w-full bg-slate-700/50 text-white text-xs rounded-lg px-3 py-2 outline-none placeholder-slate-600"
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 placeholder-slate-400 transition-colors"
                   />
                 </div>
               </>
@@ -391,25 +448,25 @@ function FlightCard({ trip, isLeader }: { trip: Trip; isLeader: boolean }) {
 
         {/* Trip notes */}
         <div>
-          <label className="text-xs text-slate-500 block mb-1">Visión del viaje (para el agente)</label>
+          <label className="text-xs font-semibold text-slate-600 block mb-1.5">Visión del viaje (para el agente)</label>
           <textarea
             value={tripNotes} onChange={(e) => setTripNotes(e.target.value)}
             placeholder="¿Qué buscan en este viaje? ¿Qué tipo de experiencias? ¿Alguna preferencia o restricción importante?"
             rows={3} maxLength={3000}
-            className="w-full bg-slate-700/50 text-white text-xs rounded-lg px-3 py-2 outline-none resize-none placeholder-slate-600 leading-relaxed"
+            className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg px-3 py-2 outline-none resize-none placeholder-slate-400 leading-relaxed focus:border-sky-500 transition-colors"
           />
         </div>
 
         <div className="flex gap-3">
           <button
             onClick={handleSave} disabled={saving}
-            className="flex-1 h-10 bg-sky-400 text-navy-900 font-bold text-sm rounded-xl disabled:opacity-50"
+            className="flex-1 h-10 bg-adventure-500 hover:bg-adventure-600 text-white font-bold text-sm rounded-xl disabled:opacity-50 transition-colors cursor-pointer"
           >
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
           <button
             onClick={() => setEditing(false)} disabled={saving}
-            className="h-10 px-4 text-slate-400 text-sm border border-slate-700 rounded-xl"
+            className="h-10 px-4 text-slate-500 text-sm border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
@@ -540,52 +597,58 @@ function ItineraryTab({
     const pct = freeTotal > 0 ? Math.round((doneCount / freeTotal) * 100) : 100;
 
     return (
-      <div className="space-y-4 bg-navy-800 rounded-2xl p-5 border border-slate-700/50">
+      <div className="space-y-4 bg-white rounded-2xl p-5 border border-slate-200 shadow-card">
         <div className="text-center">
-          <div className="text-white font-bold mb-1">
+          <div className="text-slate-900 font-bold mb-1">
             {genStatus === 'done' ? '¡Días libres regenerados!' : genStatus === 'error' ? 'Generación interrumpida' : 'Regenerando días libres...'}
           </div>
-          <div className="text-slate-400 text-sm">{doneCount} de {freeTotal} días completados</div>
+          <div className="text-slate-500 text-sm">{doneCount} de {freeTotal} días completados</div>
         </div>
 
-        <div className="bg-slate-700/50 rounded-full h-2 overflow-hidden">
+        <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
           <div
-            className={`h-2 rounded-full transition-all duration-500 ${genStatus === 'error' ? 'bg-amber-400' : 'bg-teal-400'}`}
+            className={`h-2 rounded-full transition-all duration-500 ${genStatus === 'error' ? 'bg-amber-500' : 'bg-teal-500'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
 
         {genError && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
-            <p className="text-amber-400 text-xs">{genError}</p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            <p className="text-amber-700 text-xs">{genError}</p>
           </div>
         )}
 
         <div className="space-y-1.5 max-h-48 overflow-y-auto">
           {genProgress.map((d) => (
             <div key={d.dayNumber} className="flex items-center gap-2.5">
-              {d.status === 'locked' && <span className="text-sm">🔒</span>}
+              {d.status === 'locked' && (
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-3 h-3 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+              )}
               {d.status === 'done' && (
-                <div className="w-5 h-5 rounded-full bg-teal-500/20 flex items-center justify-center">
-                  <svg className="w-3 h-3 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-5 h-5 rounded-full bg-teal-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-3 h-3 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
               )}
               {d.status === 'generating' && (
-                <div className="w-5 h-5 rounded-full border-2 border-teal-400 border-t-transparent animate-spin" />
+                <div className="w-5 h-5 rounded-full border-2 border-teal-500 border-t-transparent animate-spin flex-shrink-0" />
               )}
-              {d.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-slate-600" />}
+              {d.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-slate-200 flex-shrink-0" />}
               {d.status === 'error' && (
-                <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
-                  <span className="text-amber-400 text-[10px] font-bold">!</span>
+                <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-amber-700 text-[10px] font-bold">!</span>
                 </div>
               )}
               <span className={`text-sm ${
-                d.status === 'done' ? 'text-white' :
-                d.status === 'locked' ? 'text-slate-500' :
-                d.status === 'generating' ? 'text-teal-400' :
-                d.status === 'error' ? 'text-amber-400' : 'text-slate-600'
+                d.status === 'done' ? 'text-slate-900' :
+                d.status === 'locked' ? 'text-slate-400' :
+                d.status === 'generating' ? 'text-teal-600' :
+                d.status === 'error' ? 'text-amber-700' : 'text-slate-400'
               }`}>
                 Día {d.dayNumber}{d.city ? ` — ${d.city}` : ''}
                 {d.status === 'locked' && ' (protegido)'}
@@ -597,7 +660,7 @@ function ItineraryTab({
         {(genStatus === 'done' || genStatus === 'error') && (
           <button
             onClick={() => { setGenStatus('idle'); setGenProgress([]); }}
-            className={`w-full h-10 font-bold text-sm rounded-xl ${genStatus === 'done' ? 'bg-teal-400 text-navy-900' : 'bg-amber-500 text-white'}`}
+            className={`w-full h-10 font-bold text-sm rounded-xl cursor-pointer transition-colors ${genStatus === 'done' ? 'bg-teal-500 hover:bg-teal-600 text-white' : 'bg-amber-500 hover:bg-amber-600 text-white'}`}
           >
             Ver itinerario
           </button>
@@ -609,14 +672,14 @@ function ItineraryTab({
   if (itinerary.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="w-16 h-16 rounded-2xl bg-navy-800 flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-16 h-16 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
-        <h3 className="text-white font-semibold mb-2">Sin itinerario aún</h3>
-        <p className="text-slate-400 text-sm mb-6 max-w-xs mx-auto">
+        <h3 className="text-slate-900 font-semibold mb-2">Sin itinerario aún</h3>
+        <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
           {isLeader
             ? 'Genera un itinerario personalizado con IA basado en los perfiles del grupo.'
             : 'El líder del viaje generará el itinerario pronto.'}
@@ -624,7 +687,7 @@ function ItineraryTab({
         {isLeader && (
           <Link
             href={`/trips/${tripId}/itinerary/plan`}
-            className="inline-flex h-11 px-5 bg-sky-400 text-navy-900 font-bold text-sm rounded-xl items-center gap-2 active:scale-95 transition-transform"
+            className="inline-flex h-11 px-5 bg-adventure-500 hover:bg-adventure-600 text-white font-bold text-sm rounded-xl items-center gap-2 active:scale-95 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -641,9 +704,9 @@ function ItineraryTab({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-slate-400 text-sm">{itinerary.length} días planificados</span>
+          <span className="text-slate-500 text-sm">{itinerary.length} días planificados</span>
           {lockedCount > 0 && (
-            <span className="ml-2 text-amber-400 text-xs">· {lockedCount} 🔒</span>
+            <span className="ml-2 text-amber-600 text-xs font-semibold">· {lockedCount} bloqueados</span>
           )}
         </div>
         {isLeader && (
@@ -651,7 +714,7 @@ function ItineraryTab({
             {freeCount > 0 && (
               <button
                 onClick={handlePartialReplan}
-                className="text-teal-400 text-sm font-semibold flex items-center gap-1.5"
+                className="text-teal-600 hover:text-teal-700 text-sm font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -662,7 +725,7 @@ function ItineraryTab({
             )}
             <Link
               href={`/trips/${tripId}/itinerary/plan`}
-              className="text-sky-400 text-sm font-semibold flex items-center gap-1.5"
+              className="text-sky-600 hover:text-sky-700 text-sm font-semibold flex items-center gap-1.5 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -710,14 +773,14 @@ function MapTab({
   if (!hasCoords && !hasItems) {
     return (
       <div className="text-center py-12">
-        <div className="w-16 h-16 rounded-2xl bg-navy-800 flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6-10l6-3m0 0l5.447 2.724A1 1 0 0121 7.618v10.764a1 1 0 01-1.447.894L15 17m0-13v13" />
           </svg>
         </div>
-        <h3 className="text-white font-semibold mb-2">El mapa estará disponible</h3>
-        <p className="text-slate-400 text-sm max-w-xs mx-auto">
+        <h3 className="text-slate-900 font-semibold mb-2">El mapa estará disponible</h3>
+        <p className="text-slate-500 text-sm max-w-xs mx-auto">
           Genera el itinerario con IA para ver las ubicaciones en el mapa.
         </p>
       </div>
@@ -725,7 +788,7 @@ function MapTab({
   }
 
   return (
-    <div className="bg-navy-800 rounded-2xl overflow-hidden border border-slate-700/50" style={{ height: 400 }}>
+    <div className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-card" style={{ height: 400 }}>
       <MapViewLoader
         tripId={tripId}
         trip={trip}
@@ -754,8 +817,8 @@ function MapViewLoader(props: {
 
   if (!MapView) {
     return (
-      <div className="w-full h-full flex items-center justify-center">
-        <div className="text-slate-500 text-sm">Cargando mapa...</div>
+      <div className="w-full h-full flex items-center justify-center bg-slate-50">
+        <div className="text-slate-400 text-sm">Cargando mapa...</div>
       </div>
     );
   }

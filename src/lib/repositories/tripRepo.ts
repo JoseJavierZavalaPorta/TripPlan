@@ -332,3 +332,10 @@ export async function getParticipantByUserId(
   );
   return row ? mapParticipant(row) : null;
 }
+
+export async function deleteTrip(tripId: string): Promise<void> {
+  await execute(
+    `DELETE FROM trips WHERE id = :tripId`,
+    { tripId: hexToBuffer(tripId) }
+  );
+}

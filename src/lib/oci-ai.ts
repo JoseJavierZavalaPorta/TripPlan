@@ -265,7 +265,7 @@ function buildDayPrompt(
 ): string {
   const profileContext = buildProfileContext(profiles);
   const avoidClause = visitedLocations.length > 0
-    ? `\nAVOID repeating: ${visitedLocations.slice(-20).join(', ')}`
+    ? `\nCRITICAL — LOCATIONS ALREADY USED (never repeat any of these): ${visitedLocations.slice(-40).join(' | ')}`
     : '';
   const blacklistClause = avoidActivities?.length
     ? `\nBLACKLISTED by group (NEVER suggest these): ${avoidActivities.join(', ')}`
@@ -296,11 +296,14 @@ function buildDayPrompt(
     prevCityAssignment.city !== cityAssignment.city;
 
   const travelClause = cityChanged
-    ? `\nTRAVEL REQUIRED: Travelers must travel from ${prevCityAssignment!.city}, ${prevCityAssignment!.country} to ${cityAssignment!.city}, ${cityAssignment!.country}.
-Position 1 MUST be itemType="transport", title="[Mode]: ${prevCityAssignment!.city} → ${cityAssignment!.city}".
-Choose best mode: train if cities are <600km apart (Eurostar, AVE, TGV etc.), otherwise flight.
-Description must include: realistic departure time (e.g. 06:30), arrival time, total duration, ticket cost range, booking tip (official website or app).
-Use realistic durationMin (train <600km: 90-240min; flight: 150-210min including airport time).`
+    ? `\nTRAVEL REQUIRED: Travelers move from ${prevCityAssignment!.city}, ${prevCityAssignment!.country} to ${cityAssignment!.city}, ${cityAssignment!.country} on this day.
+THIS IS A SPLIT DAY: morning in ${prevCityAssignment!.city}, afternoon/evening in ${cityAssignment!.city}.
+- Position 1 MUST be itemType="transport", title="[Mode]: ${prevCityAssignment!.city} → ${cityAssignment!.city}".
+- Choose best mode: train if <600km (Eurostar/AVE/TGV/Thalys/Italo etc.), flight if >600km or no direct rail.
+- Transport description MUST include: departure time, arrival time, total duration, estimated cost, and a booking tip (official site or app name).
+- Realistic durationMin: train <600km = 90-240min, flight = 150-210min incl. airport time.
+- After transport (position 2+): ONLY activities in ${cityAssignment!.city} (afternoon/evening). Label them "Tarde: [name]" or "Noche: [name]".
+- Do NOT schedule activities in ${prevCityAssignment!.city} for this day — travelers will already be en route.`
     : '';
 
   const defaultStart = cityChanged ? '06:00' : (arrivalTime ?? '07:00');
@@ -318,7 +321,7 @@ Use realistic durationMin (train <600km: 90-240min; flight: 150-210min including
     ? `End activities before departure. Include airport transport.`
     : 'Full day: breakfast, morning activity, lunch, afternoon activity, dinner.';
 
-  return `You are a travel planner. Output ONLY a JSON array of itinerary items for ONE day.
+  return `You are an expert travel planner. Output ONLY a JSON array of itinerary items for ONE specific day.
 
 TRIP: ${trip.destination} | ${trip.startDate}→${trip.endDate} | ${totalDays} days
 ${trip.description ? `Notes: ${trip.description}` : ''}
@@ -326,10 +329,17 @@ TRAVELERS: ${profileContext}
 DAY: ${dayNumber}/${totalDays} — ${dayDate}${cityLine}${travelClause}${avoidClause}${blacklistClause}${timeConstraint}
 
 SCHEDULE: ${scheduleNote}
-7-10 items. Include meals + transport legs between locations. Times in HH:MM.
-RULES: local currency (EUR for Europe, PEN for Peru, USD otherwise). Respect diet/allergies/pace.
 
-Output ONLY this JSON array:
+RULES:
+- 7-10 items. Include meals, transports between locations, and main activities.
+- Times in HH:MM format. No overlaps.
+- Local currency: EUR for Europe, PEN for Peru, CLP for Chile, COP for Colombia, USD otherwise.
+- Respect travelers' diet/allergies/pace from profiles.
+- UNIQUENESS: Every locationName must be different from all others in this day AND different from the ALREADY USED list above. Choose different neighborhoods, areas, and venues — never repeat.
+- Be specific: use real place names, real addresses, realistic prices and durations.
+- For transport items: include departure/arrival times and booking tip in description.
+
+Output ONLY this JSON array (no markdown, no explanation):
 [{"position":1,"itemType":"transport","title":"...","description":"...","locationName":"...","address":"...","startTime":"${defaultStart}","endTime":"...","durationMin":60,"estimatedCost":0,"currency":"EUR","notes":"..."},...]`;
 }
 
@@ -586,6 +596,66 @@ export interface AgentResponsePayload {
   };
 }
 
+// ── Proposal normalizer ──────────────────────────────────────────────────────
+// Collapses A→B(1d)→A backtrack patterns and merges split same-city blocks.
+// Runs after AI output so display is always clean regardless of model behavior.
+
+type RawAssignment = { day: number; city: string; country: string; flag: string };
+
+function normalizeAssignments(raw: RawAssignment[]): RawAssignment[] {
+  if (!raw.length) return raw;
+
+  // Step 1: build [{city,country,flag,days}] groups (merge consecutive same-city)
+  const groups: Array<{ city: string; country: string; flag: string; days: number }> = [];
+  for (const a of raw) {
+    const last = groups[groups.length - 1];
+    if (last && last.city === a.city && last.country === a.country) {
+      last.days++;
+    } else {
+      groups.push({ city: a.city, country: a.country, flag: a.flag, days: 1 });
+    }
+  }
+
+  // Step 2: collapse A→B(1d)→A patterns (day trips that created backtracking)
+  // Repeat until no more changes (handles chains like A→B→A→C→A→D)
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i < groups.length - 1; i++) {
+      const prev = groups[i - 1];
+      const curr = groups[i];
+      const next = groups[i + 1];
+      if (
+        curr.days === 1 &&
+        prev.city === next.city &&
+        prev.country === next.country
+      ) {
+        // Absorb: day trip city (curr) + return leg (next) fold into prev
+        prev.days += next.days + 1;
+        groups.splice(i, 2);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  // Step 3: also collapse any remaining non-consecutive same-city duplicates
+  // (e.g. Madrid 2d → Valencia 1d → Madrid 1d: rare but model does it)
+  // Strategy: if two groups share the same city and are separated only by
+  // a single 1-day group, treat the middle one as a day trip too.
+  // (Already handled by the loop above — additional pass for safety)
+
+  // Step 4: rebuild with sequential day numbers
+  const result: RawAssignment[] = [];
+  let dayNum = 1;
+  for (const g of groups) {
+    for (let d = 0; d < g.days; d++) {
+      result.push({ day: dayNum++, city: g.city, country: g.country, flag: g.flag });
+    }
+  }
+  return result;
+}
+
 function buildFlightInfo(ctx: AgentTripContext): string {
   if (ctx.flightStatus === 'booked') {
     const lines = ['Flights already purchased.'];
@@ -628,7 +698,14 @@ export async function runPlanningAgent(
     }
   }).join('\n');
 
-  const prompt = `Eres un agente experto en planificación de viajes. Tu misión: entender qué necesita este grupo y proponer un plan día a día con ciudades concretas.
+  // Count how many questions the agent has already asked
+  const agentQuestionCount = history.filter((h) => {
+    if (h.role !== 'agent') return false;
+    try { return (JSON.parse(h.content) as { type: string }).type === 'question'; }
+    catch { return false; }
+  }).length;
+
+  const prompt = `Eres un agente experto en planificación de viajes. Tu misión: entender qué necesita este grupo y proponer un plan de ruta con ciudades concretas día a día.
 
 === DATOS DEL VIAJE ===
 Destino/región: ${context.destination}
@@ -639,30 +716,55 @@ Visión del líder: ${context.tripNotes || 'No especificada'}
 === PERFILES DE VIAJEROS (ya conocidos — NO preguntes sobre esto) ===
 ${profileSummary || 'Sin perfiles completos aún.'}
 
-=== CONVERSACIÓN HASTA AHORA ===
-${historyText || '(inicio de conversación)'}
+=== HISTORIAL DE CONVERSACIÓN ===
+${historyText || '(inicio de conversación — saluda brevemente y haz tu primera pregunta)'}
 
-=== MENSAJE ACTUAL DEL USUARIO ===
+=== MENSAJE DEL USUARIO ===
 USUARIO: ${userMessage}
 
-=== TU RESPUESTA ===
-Reglas:
-1. NO preguntes sobre ritmo, presupuesto, dieta, alergias ni intereses — ya están en los perfiles.
-2. Haz UNA sola pregunta enfocada en la ruta (zonas a visitar, must-sees, ciudades a evitar). Máximo 3 preguntas antes de proponer.
-3. Cuando tengas suficiente contexto, propón el plan completo.
-4. Si ya tienes toda la info necesaria, ve directo a la propuesta.
+=== INSTRUCCIONES ===
+1. NO preguntes sobre ritmo, presupuesto, dieta ni alergias — ya están en los perfiles.
+2. NO repitas preguntas que ya hiciste — revisa el historial. Cada pregunta debe ser sobre un tema NUEVO.
+3. Preguntas hechas hasta ahora: ${agentQuestionCount}. Límite: 2 preguntas. Si ya hiciste 2 o más, ve directo a la propuesta.
+4. Si el usuario ya menciona destinos o ciudades concretas, ve DIRECTO a la propuesta sin más preguntas.
+5. Cada pregunta debe ser concisa, en español, y enfocada en la ruta (zonas a visitar, must-sees, ciudades a evitar).
 
-Responde SOLO con JSON válido:
-- Para preguntar: {"type":"question","content":"<tu pregunta en español>"}
-- Para proponer: {"type":"proposal","content":"<explicación amigable en español>","proposal":{"summary":"<resumen de ruta>","cityAssignments":[{"day":1,"city":"Lima","country":"Peru","flag":"🇵🇪"},{"day":2,"city":"Lima","country":"Peru","flag":"🇵🇪"}],"highlights":["<highlight>"]}}
-- Para mensaje general: {"type":"message","content":"<tu mensaje en español>"}
+RESPONDE SOLO con uno de estos JSON (sin texto extra):
 
-REGLAS CRÍTICAS para proposals:
-- cityAssignments DEBE tener EXACTAMENTE ${context.totalDays} objetos (días 1 al ${context.totalDays})
-- Agrupa días consecutivos en la misma ciudad
-- Ordena ciudades geográficamente para minimizar backtracking
-- Si hay vuelos reservados, el día 1 empieza en la ciudad de llegada y el último día termina en la de salida
-- Incluye 3-5 highlights específicos
+Para hacer UNA pregunta:
+{"type":"question","content":"<pregunta concisa en español>"}
+
+Para proponer el plan:
+{"type":"proposal","content":"<explicación amigable en español, 1-2 frases>","proposal":{"summary":"<resumen de la ruta en 1 frase>","cityAssignments":[{"day":1,"city":"Madrid","country":"España","flag":"🇪🇸"},{"day":2,"city":"Madrid","country":"España","flag":"🇪🇸"}],"highlights":["<dato interesante específico>","<otro>","<otro>"]}}
+
+REGLAS CRÍTICAS para cityAssignments:
+- EXACTAMENTE ${context.totalDays} objetos, días 1 al ${context.totalDays}
+- Días consecutivos en la misma ciudad SIEMPRE agrupados (nunca divididos)
+- Ciudades ordenadas geográficamente para minimizar backtracking
+- Para viajes largos: planifica traslados realistas (tren <600km, vuelo >600km)
+- Si hay vuelos reservados, respeta ciudad de llegada (día 1) y de salida (último día)
+- 3-5 highlights específicos y concretos (no genéricos como "gran cultura")
+
+PROHIBICIONES ABSOLUTAS (causan error grave):
+❌ NUNCA listes la misma ciudad en dos bloques no consecutivos. Ejemplo INCORRECTO: Madrid(1d)→Toledo(1d)→Madrid(1d). Ejemplo CORRECTO: Madrid(2d)→Toledo(1d) o Madrid(3d).
+❌ NUNCA crees rutas de ida y vuelta: el patrón A→B→A siempre está PROHIBIDO.
+❌ NUNCA asignes como ciudad separada lo que es una excursión de día desde otra ciudad.
+
+EXCURSIONES DE DÍA — NO necesitan entrada propia en cityAssignments:
+Las siguientes ciudades son excursiones (<2h desde su ciudad base). Si el usuario las pide, agrega 1 día extra a la ciudad base y menciona la excursión en highlights:
+- Toledo (45min de Madrid), Segovia (1h de Madrid)
+- Oxford (1h de Londres), Windsor (30min de Londres)
+- Versalles (40min de París), Giverny (1.5h de París)
+- Pisa (1h de Florencia), Cinque Terre (1h de La Spezia)
+- Brujas (1h de Bruselas), Gante (30min de Bruselas)
+- Dachau (1h de Múnich), Neuschwanstein (2h de Múnich)
+
+MANEJO DE RESTRICCIONES DEL USUARIO (MUY IMPORTANTE):
+- Si el usuario dice "solo pasar por", "de paso", "tránsito" → asigna EXACTAMENTE 1 día a esa ciudad.
+- Si el usuario dice "es muy caro" o "no quiero gastar ahí" → minimiza días en ese país (1 día máximo).
+- Si el usuario pide explícitamente "X días en Y" → usa EXACTAMENTE ese número, ni más ni menos.
+- Si el usuario pide reducir días en un país → reduce esos días y redistribuye en otros países.
+- Cada día en cityAssignments = 1 noche de alojamiento. No ignores restricciones de coste.
 
 JSON:`;
 
@@ -676,7 +778,15 @@ JSON:`;
         .replace(/\}\s*\{/g, '},{')
         .replace(/,(\s*[}\]])/g, '$1');
       const parsed = JSON.parse(cleaned) as AgentResponsePayload;
-      if (parsed.type && parsed.content) return parsed;
+      if (parsed.type && parsed.content) {
+        // Normalize proposal to remove A→B→A backtracking and split cities
+        if (parsed.type === 'proposal' && parsed.proposal?.cityAssignments) {
+          parsed.proposal.cityAssignments = normalizeAssignments(
+            parsed.proposal.cityAssignments
+          );
+        }
+        return parsed;
+      }
     } catch {
       // fall through to plain message
     }

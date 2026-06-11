@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { query, execute, transaction } from '../db-helpers';
 import { getConnection, rawToHex, hexToBuffer } from '../db';
 import { DbTripMedia } from '@/types/db';
-import { TripMedia, MediaType } from '@/types';
+import { TripMedia, TripMediaAlbumEntry, MediaType } from '@/types';
 
 function mapMedia(row: DbTripMedia): TripMedia {
   return {
@@ -131,6 +131,56 @@ export async function getMediaFile(
   } finally {
     await conn.close();
   }
+}
+
+export async function getTripAlbum(tripId: string): Promise<TripMediaAlbumEntry[]> {
+  type AlbumRow = {
+    ID: Buffer;
+    TRIP_ID: Buffer;
+    ITEM_ID: Buffer | null;
+    USER_ID: Buffer;
+    UPLOADER_NAME: string;
+    UPLOADER_AVATAR: string | null;
+    MEDIA_TYPE: string;
+    URL: string;
+    TITLE: string | null;
+    CREATED_AT: Date;
+    DAY_NUMBER: number | null;
+    DAY_DATE: string | null;
+    ITEM_TITLE: string | null;
+  };
+  const rows = await query<AlbumRow>(
+    `SELECT
+       tm.id, tm.trip_id, tm.item_id, tm.user_id,
+       u.name           AS uploader_name,
+       u.avatar_url     AS uploader_avatar,
+       tm.media_type, tm.url, tm.title, tm.created_at,
+       id2.day_number,
+       TO_CHAR(id2.day_date, 'YYYY-MM-DD') AS day_date,
+       ii.title         AS item_title
+     FROM trip_media tm
+     LEFT JOIN users u             ON u.id  = tm.user_id
+     LEFT JOIN itinerary_items ii  ON ii.id = tm.item_id
+     LEFT JOIN itinerary_days  id2 ON id2.id = ii.day_id
+     WHERE tm.trip_id = :tripId
+     ORDER BY tm.user_id, tm.created_at DESC`,
+    { tripId: hexToBuffer(tripId) }
+  );
+  return rows.map((r) => ({
+    id:             rawToHex(r.ID),
+    tripId:         rawToHex(r.TRIP_ID),
+    itemId:         r.ITEM_ID ? rawToHex(r.ITEM_ID) : null,
+    userId:         rawToHex(r.USER_ID),
+    uploaderName:   r.UPLOADER_NAME,
+    uploaderAvatar: r.UPLOADER_AVATAR,
+    mediaType:      r.MEDIA_TYPE as MediaType,
+    url:            r.URL,
+    title:          r.TITLE,
+    createdAt:      r.CREATED_AT.toISOString(),
+    dayNumber:      r.DAY_NUMBER ?? null,
+    dayDate:        r.DAY_DATE ?? null,
+    itemTitle:      r.ITEM_TITLE ?? null,
+  }));
 }
 
 export async function deleteItemMedia(mediaId: string, userId: string): Promise<boolean> {

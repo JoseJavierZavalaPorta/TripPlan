@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/auth';
-import { getTripById, isParticipant, updateTrip } from '@/lib/repositories/tripRepo';
+import { getTripById, isParticipant, updateTrip, deleteTrip } from '@/lib/repositories/tripRepo';
 
 export async function GET(
   _req: NextRequest,
@@ -72,6 +72,33 @@ export async function PATCH(
     return NextResponse.json({ data: { ok: true } });
   } catch (err) {
     console.error('[PATCH /api/trips/[id]]', err);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const trip = await getTripById(params.id);
+    if (!trip) {
+      return NextResponse.json({ error: 'Viaje no encontrado' }, { status: 404 });
+    }
+
+    if (trip.leaderId !== session.user.id) {
+      return NextResponse.json({ error: 'Solo el líder puede eliminar el viaje' }, { status: 403 });
+    }
+
+    await deleteTrip(params.id);
+    return NextResponse.json({ data: { ok: true } });
+  } catch (err) {
+    console.error('[DELETE /api/trips/[id]]', err);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

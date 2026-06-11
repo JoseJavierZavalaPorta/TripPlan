@@ -243,6 +243,22 @@ export interface TripMedia {
   createdAt: string;
 }
 
+export interface TripMediaAlbumEntry {
+  id: string;
+  tripId: string;
+  itemId: string | null;
+  userId: string;
+  uploaderName: string;
+  uploaderAvatar: string | null;
+  mediaType: MediaType;
+  url: string;
+  title: string | null;
+  createdAt: string;
+  dayNumber: number | null;
+  dayDate: string | null;
+  itemTitle: string | null;
+}
+
 export interface TripInvitation {
   id: string;
   tripId: string;

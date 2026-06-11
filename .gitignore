@@ -39,3 +39,6 @@ wallet/
 
 # Temp
 /tmp/
+
+# Claude Code
+.claude/

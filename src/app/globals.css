@@ -5,10 +5,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-primary: #0F172A;
-  --bg-card: #1E293B;
-  --color-sky: #38BDF8;
-  --color-amber: #F59E0B;
+  --bg-primary: #FFFBF5;
+  --bg-card: #FFFFFF;
+  --color-adventure: #F97316;
+  --color-sky: #0EA5E9;
 }
 
 * {
@@ -20,8 +20,8 @@ html {
 }
 
 body {
-  background-color: #0F172A;
-  color: #F1F5F9;
+  background-color: #FFFBF5;
+  color: #1A1A2E;
   font-family: 'Inter', system-ui, sans-serif;
   min-height: 100dvh;
 }
@@ -31,9 +31,9 @@ body {
   .skeleton {
     background: linear-gradient(
       90deg,
-      #1E293B 25%,
-      #334155 50%,
-      #1E293B 75%
+      #F1F5F9 25%,
+      #E2E8F0 50%,
+      #F1F5F9 75%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
@@ -42,7 +42,7 @@ body {
 
 /* Remove Leaflet default styling conflicts */
 .leaflet-container {
-  background: #0F172A;
+  background: #E0F2FE;
   font-family: 'Inter', sans-serif;
 }
 
@@ -56,9 +56,9 @@ html {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0F172A;
+  background: #F8FAFC;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #CBD5E1;
   border-radius: 3px;
 }
