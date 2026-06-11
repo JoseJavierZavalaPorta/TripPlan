@@ -1,21 +1,116 @@
 # TripPlan
 
-Planificador de viajes colaborativo con IA. Un grupo de viajeros crea un viaje, cada uno registra su perfil (intereses, dieta, presupuesto, vuelo de llegada), y un agente LLM propone la ruta optima y genera el itinerario dia a dia.
+Planificador de viajes colaborativo con IA. Un grupo de viajeros crea un viaje, cada uno registra su perfil (intereses, dieta, presupuesto, vuelo de llegada), y un agente LLM propone la ruta optima y genera el itinerario dia a dia en tiempo real.
+
+**Stack:** Next.js 14 · TypeScript · Oracle Autonomous DB 26ai · OCI Generative AI (Cohere Command R+) · NextAuth.js v5 · Tailwind CSS · Railway
+
+---
+
+## Integraciones externas
+
+### 1. OCI Generative AI — Cohere Command R+
+
+| | |
+|---|---|
+| **Tipo** | LLM via REST (firmado RSA-SHA256) |
+| **Modelo** | `amaaaaaask7dceyapnibwg42qjhwaxrlqfpreueirtwghiwvv2whsnwmnlva` |
+| **Autenticacion** | OCI Signature v1 — clave privada RSA + fingerprint |
+| **Archivo** | `src/lib/oci-ai.ts` |
+
+Usos dentro de la app:
+
+- **Agente planificador** (`runPlanningAgent`): chat multi-turno que hace hasta 2 preguntas al grupo y propone una ruta de ciudades con dias asignados. Devuelve JSON estructurado `{type, proposal, question}`.
+- **Generacion de itinerario** (`generateItinerary`): recibe ciudad, dia, perfil del grupo y lista de lugares ya visitados; genera entre 6-10 actividades del dia en JSON. Se ejecuta en streaming SSE, un dia a la vez.
+- **Alternativas de actividad** (`suggestItemAlternative`): reemplaza una actividad especifica por una alternativa diferente sin repetir lugares ya usados.
+
+La firma HTTP es manual (no hay SDK oficial de OCI para Node.js). Se implementa en `src/lib/oci-ai.ts` usando `node:crypto` con el algoritmo `RSA-SHA256`.
+
+---
+
+### 2. Oracle Autonomous Database 26ai
+
+| | |
+|---|---|
+| **Tipo** | Base de datos relacional Oracle (OLTP) |
+| **Conexion** | TLS con wallet de certificados (.p12 / .sso) |
+| **Driver** | `oracledb` (cliente nativo Node.js, modo Thick) |
+| **Archivo** | `src/lib/db.ts`, `src/lib/repositories/` |
+
+Tablas principales:
+
+| Tabla | Descripcion |
+|---|---|
+| `USERS` | Cuentas de usuario con password hasheado (bcrypt) |
+| `TRIPS` | Viajes con titulo, destino, fechas y estado de vuelo |
+| `TRIP_PARTICIPANTS` | Relacion muchos-a-muchos usuarios ↔ viajes |
+| `TRAVELER_PROFILES` | Perfil personal por viajero: dieta, ritmo, intereses, presupuesto, fechas de llegada/salida |
+| `PLANNING_MESSAGES` | Historial de conversacion con el agente planificador |
+| `ITINERARY_DAYS` | Dias del itinerario con ciudad asignada |
+| `ITINERARY_ITEMS` | Actividades, comidas y transportes dentro de cada dia |
+| `TRIP_MEDIA` | Fotos subidas por los participantes, organizadas por dia |
+
+---
+
+### 3. AirLabs API
+
+| | |
+|---|---|
+| **Tipo** | REST API de datos de vuelos en tiempo real |
+| **Autenticacion** | API key en query param (`api_key`) |
+| **Endpoint propio** | `GET /api/flights/lookup?code=IB0124` |
+| **Archivo** | `src/app/api/flights/lookup/route.ts` |
+
+La app recibe un codigo IATA de vuelo (ej: `LA2031`) y consulta AirLabs para autocompletar:
+- Nombre de la aerolinea
+- Ciudad y aeropuerto de origen y destino
+- Hora de salida y llegada
+- Si el vuelo llega al dia siguiente (`+1 dia`)
+
+Estos datos se usan para pre-rellenar el perfil viajero (fecha/hora de llegada al destino) sin que el usuario tenga que ingresarlos manualmente.
+
+Normalizacion aplicada: AirLabs requiere codigo sin ceros iniciales (`IB124`), pero los usuarios suelen escribir `IB0124`. El endpoint normaliza automaticamente antes de consultar.
+
+---
+
+### 4. Wikipedia REST API
+
+| | |
+|---|---|
+| **Tipo** | REST API publica — sin autenticacion ni API key |
+| **Endpoint propio** | `GET /api/cities/preview?city=Paris` |
+| **Archivo** | `src/app/api/cities/preview/route.ts` |
+
+Cuando el agente propone una ciudad, la interfaz muestra una tarjeta con:
+- Extracto de descripcion de la ciudad (primer parrafo de Wikipedia)
+- Imagen representativa del lugar
+
+Se usa el endpoint `https://en.wikipedia.org/api/rest_v1/page/summary/{ciudad}` combinado con `https://en.wikipedia.org/w/api.php` para obtener imagenes de landmarks. Se filtran resultados de personas, aeropuertos y articulos de desambiguacion con heuristicas por palabras clave.
+
+---
+
+### 5. Deep links de transporte
+
+| | |
+|---|---|
+| **Tipo** | Links directos a servicios externos (sin API) |
+| **Archivo** | `src/app/trips/[id]/itinerary/plan/PlanningAgent.tsx` |
+
+Entre cada par de ciudades del itinerario se muestran botones de acceso directo para que el usuario compare y reserve transporte:
+
+| Servicio | URL generada |
+|---|---|
+| Rome2rio | `rome2rio.com/s/{origen}/{destino}` |
+| Google Flights | `google.com/travel/flights?q=flights+from+{origen}+to+{destino}` |
+| Google Maps | `google.com/maps/dir/{origen}/{destino}` |
+| Trainline | `thetrainline.com/train-times/{origen}-to-{destino}` |
+
+No requieren API key. Los precios son siempre en tiempo real desde cada plataforma.
+
+---
 
 ## Arquitectura
 
-Ver [`docs/architecture.md`](docs/architecture.md) para el diagrama completo y las decisiones de stack.
-
-**Stack:** Next.js 14 · TypeScript · Oracle Autonomous DB 26ai · OCI Generative AI (Cohere Command R+) · NextAuth.js v5 · Tailwind CSS
-
-**Integraciones externas:**
-
-| Servicio | Uso |
-|---|---|
-| OCI Generative AI — Cohere Command R+ | Agente planificador (chat multi-turno) + generacion de itinerario dia a dia |
-| Oracle Autonomous Database 26ai | Persistencia de viajes, perfiles, itinerarios y mensajes del agente |
-| AirLabs API | Autocompletar datos de vuelo a partir del codigo IATA |
-| Wikipedia REST API | Preview de ciudades: descripcion e imagenes de lugares de interes |
+Ver [`docs/architecture.md`](docs/architecture.md) para el diagrama completo (Mermaid flowchart + sequence diagram) y las decisiones de stack con trade-offs.
 
 ---
 
@@ -30,10 +125,10 @@ Ver [`docs/architecture.md`](docs/architecture.md) para el diagrama completo y l
 
 ## Setup local
 
-### 1. Clonar el repositorio
+### 1. Clonar e instalar
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/JoseJavierZavalaPorta/TripPlan.git
 cd TripPlan
 npm install
 ```
@@ -49,47 +144,17 @@ unzip wallet/wallet.zip -d wallet/extracted
 
 ### 3. Variables de entorno
 
-Crea el archivo `.env.local` en la raiz del proyecto:
+Copia `.env.local.example` a `.env.local` y completa los valores:
 
-```env
-# Oracle Autonomous Database
-ORACLE_USER=admin
-ORACLE_PASSWORD="tu_password"
-ORACLE_CONNECT_STRING=(description=(retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.<region>.oraclecloud.com))(connect_data=(service_name=<service_name>_tp.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
-ORACLE_WALLET_DIR=/ruta/absoluta/al/proyecto/wallet/extracted
-ORACLE_WALLET_PASSWORD="tu_wallet_password"
-
-# OCI Generative AI
-OCI_USER_OCID=ocid1.user.oc1..xxxxx
-OCI_FINGERPRINT=xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx
-OCI_TENANCY_OCID=ocid1.tenancy.oc1..xxxxx
-OCI_REGION=us-chicago-1
-# Contenido del key.pem en base64: cat oci-keys/key.pem | base64 -w 0
-OCI_PRIVATE_KEY_B64=
-
-# NextAuth
-NEXTAUTH_URL=http://localhost:3001
-NEXTAUTH_SECRET=genera_con_openssl_rand_base64_32
-AUTH_SECRET=mismo_valor_que_NEXTAUTH_SECRET
-
-# AirLabs
-AIRLABS_API_KEY=tu_api_key
-
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3001
-NEXT_PUBLIC_APP_NAME=TripPlan
-PORT=3001
+```bash
+cp .env.local.example .env.local
 ```
-
-Alternativa para la clave privada: coloca el archivo `key.pem` directamente en `oci-keys/key.pem` sin necesidad de codificarlo en base64.
 
 ### 4. Inicializar la base de datos
 
 ```bash
 node scripts/init-db.js
 ```
-
-Crea todas las tablas necesarias en Oracle DB.
 
 ### 5. Ejecutar en desarrollo
 
@@ -107,19 +172,26 @@ La app queda disponible en http://localhost:3001.
 src/
 ├── app/
 │   ├── api/
-│   │   ├── auth/          # NextAuth handlers
-│   │   ├── cities/        # Wikipedia preview
-│   │   ├── flights/       # AirLabs lookup
-│   │   └── trips/         # CRUD + agente planificador + generacion SSE
-│   ├── auth/              # Paginas de login y registro
-│   └── trips/             # Dashboard, wizard nuevo viaje, itinerario
+│   │   ├── auth/                  # NextAuth handlers
+│   │   ├── cities/preview/        # Wikipedia REST API
+│   │   ├── flights/lookup/        # AirLabs API
+│   │   └── trips/
+│   │       ├── route.ts           # CRUD viajes
+│   │       └── [id]/
+│   │           ├── route.ts       # GET/PATCH viaje
+│   │           ├── profile/       # Perfil viajero
+│   │           ├── itinerary/
+│   │           │   ├── agent/     # Agente planificador (OCI LLM)
+│   │           │   └── generate/  # Generacion SSE (OCI LLM)
+│   │           └── media/         # Subida de fotos
+│   ├── auth/                      # Paginas de login y registro
+│   └── trips/                     # Dashboard, wizard nuevo viaje, itinerario
 ├── components/
-│   ├── trips/             # TripDashboard, TravelerProfileForm, AlbumTab
-│   ├── itinerary/         # DayItinerary, ItineraryItem
-│   └── ui/                # NavLink, UserMenu
+│   ├── trips/                     # TripDashboard, TravelerProfileForm, AlbumTab
+│   └── ui/                        # NavLink, UserMenu
 └── lib/
-    ├── oci-ai.ts          # Logica LLM: agente planificador y generacion de dias
-    └── repositories/      # Acceso a Oracle DB
+    ├── oci-ai.ts                  # OCI Generative AI: agente + generacion + alternativas
+    └── repositories/              # Acceso a Oracle DB
 ```
 
 ---
@@ -127,11 +199,11 @@ src/
 ## Flujo principal de uso
 
 1. **Registro / Login** — crea cuenta con email y contrasena
-2. **Nuevo viaje** — define titulo, destino, fechas; ingresa el codigo de vuelo para autocompletar datos; completa el perfil personal con intereses, ritmo de viaje y presupuesto
+2. **Nuevo viaje** — define titulo, destino, fechas; ingresa el codigo de vuelo para autocompletar datos con AirLabs; completa el perfil personal
 3. **Comparte el viaje** — invita a otros viajeros con link; cada uno registra su propio perfil
-4. **Agente planificador** — chat con IA que hace hasta 2 preguntas y propone una ruta de ciudades con dias asignados; el usuario puede ajustar la propuesta manualmente antes de aprobar
-5. **Generacion en streaming** — el itinerario se genera dia a dia con SSE, visible en tiempo real mientras se construye
-6. **Vista de itinerario** — actividades, comidas y transporte por dia; permite pedir alternativas a cualquier actividad con IA
+4. **Agente planificador** — chat con OCI LLM que hace hasta 2 preguntas y propone una ruta de ciudades con dias asignados; el usuario puede ajustar la propuesta manualmente antes de aprobar
+5. **Generacion en streaming** — el itinerario se genera dia a dia con SSE, visible en tiempo real mientras se construye (OCI LLM)
+6. **Vista de itinerario** — actividades, comidas y transporte por dia; links directos a Rome2rio / Google Flights para reservar traslados; pedir alternativas a cualquier actividad con IA
 7. **Album** — los participantes suben fotos del viaje organizadas por dia
 
 ---
@@ -148,7 +220,7 @@ NEXT_PUBLIC_APP_URL=https://tu-dominio.railway.app
 NODE_ENV=production
 ```
 
-En produccion `ORACLE_WALLET_DIR` debe apuntar a un directorio accesible. Se recomienda usar `OCI_PRIVATE_KEY_B64` para la clave privada en lugar de depender de un archivo en disco.
+En produccion se recomienda usar `OCI_PRIVATE_KEY_B64` (clave en base64) y `ORACLE_WALLET_BASE64` (wallet en base64) en lugar de rutas a archivos en disco.
 
 ---
 
